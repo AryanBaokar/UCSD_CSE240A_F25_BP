@@ -12,9 +12,9 @@
 //
 // TODO:Student Information
 //
-const char *studentName = "TODO";
-const char *studentID = "TODO";
-const char *email = "TODO";
+const char *studentName = "ARYAN_BAOKAR";
+const char *studentID = "A69040621";
+const char *email = "abaokar@ucsd.edu";
 
 //------------------------------------//
 //      Predictor Configuration       //
@@ -29,6 +29,10 @@ int ghistoryBits = 15; // Number of bits used for Global History
 int bpType;            // Branch Prediction Type
 int verbose;
 
+// Alpha 21264 Tournament Predictor Config
+uint8_t a21264_localHistoryBits = 10;   // Number of bits for local history of each branch
+uint8_t a21264_globalHistoryBits  = 12; // Number of bits for global history
+
 //------------------------------------//
 //      Predictor Data Structures     //
 //------------------------------------//
@@ -39,6 +43,12 @@ int verbose;
 // gshare
 uint8_t *bht_gshare;
 uint64_t ghistory;
+
+// Alpha 21264 Tournament predictor
+uint16_t a21264_globalHistory;  // Actual history of global
+uint16_t* a21264_localHistory;   // Actual history of each branch, use pc to index this
+uint8_t* a21264_ght;            // Table containing predictions for global history
+uint8_t* a21264_localPredTable;
 
 //------------------------------------//
 //        Predictor Functions         //
@@ -120,6 +130,184 @@ void cleanup_gshare()
   free(bht_gshare);
 }
 
+/***********************************************************************************************************************************/
+// Alpha 21264 Tournament Predictor functions
+void a21264_init()
+{
+  uint16_t a21264_ghtEntries  = 1 << a21264_globalHistoryBits;
+  a21264_ght = (uint8_t *)malloc(a21264_ghtEntries * sizeof(uint8_t));
+
+  for(int i = 0; i < a21264_ghtEntries; i++)
+  {
+    a21264_ght[i] = WN;
+  }
+
+  a21264_globalHistory = 0;
+
+  uint16_t a21264_lhtEntries = 1 << a21264_localHistoryBits;
+  a21264_localHistory = (uint16_t *)malloc(a21264_lhtEntries * sizeof(uint16_t));
+  a21264_localPredTable = (uint8_t *)malloc(BRANCHES * a21264_lhtEntries * sizeof(uint8_t));
+  uint32_t bound = BRANCHES * a21264_lhtEntries;
+
+  for(int i = 0; i < bound; i++)
+  {
+    a21264_localPredTable[i] = VWNT;
+  }
+
+  //printf("%d \n", a21264_localPredTable[201]);
+  for(int i = 0; i < a21264_lhtEntries; i++)
+  {
+    a21264_localHistory[i] = 0;
+  }
+
+}
+
+uint8_t a21264_predictGlobal()
+{
+  uint16_t a21264_ghtEntries  = 1 << a21264_globalHistoryBits;
+  uint16_t index = a21264_globalHistory & (a21264_ghtEntries - 1);
+  switch (a21264_ght[index])
+  {
+  case WN:
+    return NOTTAKEN;
+  case SN:
+    return NOTTAKEN;
+  case WT:
+    return TAKEN;
+  case ST:
+    return TAKEN;
+  default:
+    printf("Warning: Undefined state of entry in A21264 BHT!\n");
+    return NOTTAKEN;
+  }
+}
+
+uint8_t a21264_predictLocal(uint32_t pc)
+{
+  uint32_t a21264_lhtentries = 1 << a21264_localHistoryBits;
+  uint32_t pc_lower_bits = pc & (BRANCHES - 1);
+  uint16_t history = a21264_localHistory[pc_lower_bits]; // will contain history of a branch
+  uint32_t index = pc_lower_bits*BRANCHES + (history & (a21264_lhtentries - 1));
+
+  switch(a21264_localPredTable[index])
+  {
+    case VSNT:
+      return NOTTAKEN;
+    case SNT:
+      return NOTTAKEN;
+    case VWNT:
+      return NOTTAKEN;
+    case WNT:
+      return NOTTAKEN;
+    case VWT:
+      return TAKEN;
+    case WTT:
+      return TAKEN;
+    case STT:
+      return TAKEN;
+    case WST:
+      return TAKEN;
+    default:
+      return NOTTAKEN;
+  }
+}
+
+uint8_t a21264_predict(uint32_t pc)
+{
+  uint8_t globalPred = a21264_predictGlobal();
+  uint8_t localPred = a21264_predictLocal(pc);
+
+
+
+  return globalPred;
+}
+
+void a21264_trainGlobal(uint8_t outcome)
+{
+  // Training Global Prediction
+  uint16_t a21264_ghtEntries  = 1 << a21264_globalHistoryBits;
+  uint16_t index = a21264_globalHistory & (a21264_ghtEntries - 1);
+
+  // Update state of entry in bht based on outcome
+  switch (a21264_ght[index])
+  {
+  case WN:
+    a21264_ght[index] = (outcome == TAKEN) ? WT : SN;
+    break;
+  case SN:
+    a21264_ght[index] = (outcome == TAKEN) ? WN : SN;
+    break;
+  case WT:
+    a21264_ght[index] = (outcome == TAKEN) ? ST : WN;
+    break;
+  case ST:
+    a21264_ght[index] = (outcome == TAKEN) ? ST : WT;
+    break;
+  default:
+    printf("Warning: Undefined state of entry in A21264 GHT!\n");
+    break;
+  }
+
+  a21264_globalHistory = ((a21264_globalHistory << 1) | outcome);
+}
+
+void a21264_trainLocal(uint32_t pc , uint8_t outcome)
+{
+  uint32_t a21264_lhtentries = 1 << a21264_localHistoryBits;
+  uint32_t pc_lower_bits = pc & (BRANCHES - 1);
+  uint32_t history = a21264_localHistory[pc_lower_bits]; // will contain history of a branch
+  uint32_t index = pc_lower_bits*BRANCHES + (history & (a21264_lhtentries - 1));
+
+
+  switch (a21264_localPredTable[index])
+  {
+  case VSNT:
+    a21264_localPredTable[index] = (outcome == TAKEN) ? SNT : VSNT;
+    break;
+  case SNT:
+    a21264_localPredTable[index] = (outcome == TAKEN) ? VWNT : VSNT;
+    break;
+  case VWNT:
+    a21264_localPredTable[index] = (outcome == TAKEN) ?  WNT : SNT;
+    break;
+  case WNT:
+    a21264_localPredTable[index] = (outcome == TAKEN) ? VWT : VWNT;
+    break;
+  case VWT:
+    a21264_localPredTable[index] = (outcome == TAKEN) ? WTT : WNT;
+    break;
+  case WTT:
+    a21264_localPredTable[index] = (outcome == TAKEN) ? STT : VWT;
+    break;
+  case STT:
+    a21264_localPredTable[index] = (outcome == TAKEN) ? WST : WTT;
+    break;
+  case WST:
+    a21264_localPredTable[index] = (outcome == TAKEN) ? WST : STT;
+    break;
+  default:
+    printf("Warning: Undefined state of entry in A21264 LHT!\n");
+    break;
+  }
+
+  a21264_localHistory[pc_lower_bits] = ((a21264_localHistory[pc_lower_bits] << 1) | outcome);
+}
+
+void a21264_train(uint32_t pc, uint8_t outcome)
+{
+  a21264_trainGlobal(outcome);
+  a21264_trainLocal(pc, outcome);
+}
+
+
+
+void a21264_free()
+{
+  free(a21264_ght);
+  free(a21264_localHistory);
+  free(a21264_localPredTable);
+}
+
 void init_predictor()
 {
   switch (bpType)
@@ -130,6 +318,7 @@ void init_predictor()
     init_gshare();
     break;
   case TOURNAMENT:
+    a21264_init();
     break;
   case CUSTOM:
     break;
@@ -153,7 +342,7 @@ uint32_t make_prediction(uint32_t pc, uint32_t target, uint32_t direct)
   case GSHARE:
     return gshare_predict(pc);
   case TOURNAMENT:
-    return NOTTAKEN;
+    return a21264_predict(pc);
   case CUSTOM:
     return NOTTAKEN;
   default:
@@ -180,7 +369,7 @@ void train_predictor(uint32_t pc, uint32_t target, uint32_t outcome, uint32_t co
     case GSHARE:
       return train_gshare(pc, outcome);
     case TOURNAMENT:
-      return;
+      return a21264_train(pc, outcome);
     case CUSTOM:
       return;
     default:

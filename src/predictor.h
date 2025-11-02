@@ -38,6 +38,18 @@ extern const char *bpName[];
 #define WT 2 // predict T, weak taken
 #define ST 3 // predict T, strong taken
 
+#define VSNT 0  // predict NT, very strongly not taken
+#define SNT  1  // predict NT, strongly not taken
+#define VWNT 2  // predict NT, weakly not taken
+#define WNT  3  // predict NT, very weakly not taken
+
+#define VWT  4  // predict T, very weakly taken
+#define WTT  5  // predict T, weakly taken
+#define STT  6  // predict T, strongly taken
+#define WST  7  // predict T, very strongly taken
+
+#define BRANCHES 1024 // No. of branches to store local history for
+
 //------------------------------------//
 //      Predictor Configuration       //
 //------------------------------------//
