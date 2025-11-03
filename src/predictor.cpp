@@ -45,10 +45,11 @@ uint8_t *bht_gshare;
 uint64_t ghistory;
 
 // Alpha 21264 Tournament predictor
-uint16_t a21264_globalHistory;  // Actual history of global
+uint16_t a21264_globalHistory;   // Actual history of global
 uint16_t* a21264_localHistory;   // Actual history of each branch, use pc to index this
-uint8_t* a21264_ght;            // Table containing predictions for global history
-uint8_t* a21264_localPredTable;
+uint8_t* a21264_ght;             // Table containing predictions for global history
+uint8_t* a21264_localPredTable;  // Prediction to be made for each type of local history
+uint8_t* a21264_chooser;         // Chooser function
 
 //------------------------------------//
 //        Predictor Functions         //
@@ -146,18 +147,23 @@ void a21264_init()
 
   uint16_t a21264_lhtEntries = 1 << a21264_localHistoryBits;
   a21264_localHistory = (uint16_t *)malloc(a21264_lhtEntries * sizeof(uint16_t));
-  a21264_localPredTable = (uint8_t *)malloc(BRANCHES * a21264_lhtEntries * sizeof(uint8_t));
-  uint32_t bound = BRANCHES * a21264_lhtEntries;
+  a21264_localPredTable = (uint8_t *)malloc(a21264_lhtEntries * sizeof(uint8_t));
 
-  for(int i = 0; i < bound; i++)
+  for(int i = 0; i < a21264_lhtEntries; i++)
   {
     a21264_localPredTable[i] = VWNT;
   }
 
-  //printf("%d \n", a21264_localPredTable[201]);
   for(int i = 0; i < a21264_lhtEntries; i++)
   {
     a21264_localHistory[i] = 0;
+  }
+
+  a21264_chooser = (uint8_t *)malloc(a21264_ghtEntries * sizeof(uint8_t));
+
+  for(int i = 0; i < a21264_ghtEntries; i++)
+  {
+    a21264_chooser[i] = 0;
   }
 
 }
@@ -185,9 +191,9 @@ uint8_t a21264_predictGlobal()
 uint8_t a21264_predictLocal(uint32_t pc)
 {
   uint32_t a21264_lhtentries = 1 << a21264_localHistoryBits;
-  uint32_t pc_lower_bits = pc & (BRANCHES - 1);
-  uint16_t history = a21264_localHistory[pc_lower_bits]; // will contain history of a branch
-  uint32_t index = pc_lower_bits*BRANCHES + (history & (a21264_lhtentries - 1));
+  uint32_t pc_lower_bits = (pc & (a21264_lhtentries - 1));
+  uint16_t history = a21264_localHistory[pc_lower_bits];
+  uint32_t index = (history & (a21264_lhtentries - 1));
 
   switch(a21264_localPredTable[index])
   {
@@ -195,9 +201,9 @@ uint8_t a21264_predictLocal(uint32_t pc)
       return NOTTAKEN;
     case SNT:
       return NOTTAKEN;
-    case VWNT:
-      return NOTTAKEN;
     case WNT:
+      return NOTTAKEN;
+    case VWNT:
       return NOTTAKEN;
     case VWT:
       return TAKEN;
@@ -217,86 +223,163 @@ uint8_t a21264_predict(uint32_t pc)
   uint8_t globalPred = a21264_predictGlobal();
   uint8_t localPred = a21264_predictLocal(pc);
 
+  uint16_t a21264_ghtEntries  = 1 << a21264_globalHistoryBits;
+  uint16_t index = a21264_globalHistory & (a21264_ghtEntries - 1);
 
+  uint8_t finalPred;
 
-  return globalPred;
+  if(a21264_chooser[index] >= 2)
+  {
+    finalPred = globalPred;
+  }
+  else
+  {
+    finalPred = localPred;
+  }
+
+  return finalPred;
 }
 
-void a21264_trainGlobal(uint8_t outcome)
+uint8_t a21264_trainGlobal(uint8_t outcome)
 {
   // Training Global Prediction
   uint16_t a21264_ghtEntries  = 1 << a21264_globalHistoryBits;
   uint16_t index = a21264_globalHistory & (a21264_ghtEntries - 1);
+  uint8_t retVal;
 
   // Update state of entry in bht based on outcome
   switch (a21264_ght[index])
   {
   case WN:
+  {
     a21264_ght[index] = (outcome == TAKEN) ? WT : SN;
+    retVal = NOTTAKEN;
     break;
+  }
   case SN:
+  {
     a21264_ght[index] = (outcome == TAKEN) ? WN : SN;
+    retVal = NOTTAKEN;
     break;
+  }
   case WT:
+  {
     a21264_ght[index] = (outcome == TAKEN) ? ST : WN;
+    retVal = TAKEN;
     break;
+  }
   case ST:
+  {
     a21264_ght[index] = (outcome == TAKEN) ? ST : WT;
+    retVal = TAKEN;
     break;
+  }
   default:
     printf("Warning: Undefined state of entry in A21264 GHT!\n");
     break;
   }
 
   a21264_globalHistory = ((a21264_globalHistory << 1) | outcome);
+  return retVal;
 }
 
-void a21264_trainLocal(uint32_t pc , uint8_t outcome)
+uint8_t a21264_trainLocal(uint32_t pc , uint8_t outcome)
 {
   uint32_t a21264_lhtentries = 1 << a21264_localHistoryBits;
-  uint32_t pc_lower_bits = pc & (BRANCHES - 1);
-  uint32_t history = a21264_localHistory[pc_lower_bits]; // will contain history of a branch
-  uint32_t index = pc_lower_bits*BRANCHES + (history & (a21264_lhtentries - 1));
+  uint32_t pc_lower_bits = (pc & (a21264_lhtentries - 1));
+  uint32_t history = a21264_localHistory[pc_lower_bits];
+  uint32_t index = (history & (a21264_lhtentries - 1));
 
+  uint8_t retVal;
 
   switch (a21264_localPredTable[index])
   {
   case VSNT:
+  {
     a21264_localPredTable[index] = (outcome == TAKEN) ? SNT : VSNT;
+    retVal = NOTTAKEN;
     break;
+  } 
   case SNT:
+  {
     a21264_localPredTable[index] = (outcome == TAKEN) ? VWNT : VSNT;
+    retVal = NOTTAKEN;
     break;
-  case VWNT:
-    a21264_localPredTable[index] = (outcome == TAKEN) ?  WNT : SNT;
-    break;
+  }
   case WNT:
-    a21264_localPredTable[index] = (outcome == TAKEN) ? VWT : VWNT;
+  {
+    a21264_localPredTable[index] = (outcome == TAKEN) ?  VWNT : SNT;
+    retVal = NOTTAKEN;
     break;
+  }
+  case VWNT:
+  {
+    a21264_localPredTable[index] = (outcome == TAKEN) ? VWT : WNT;
+    retVal = NOTTAKEN;
+    break;
+  }
   case VWT:
+  {
     a21264_localPredTable[index] = (outcome == TAKEN) ? WTT : WNT;
+    retVal = TAKEN;
     break;
+  }
   case WTT:
+  {
     a21264_localPredTable[index] = (outcome == TAKEN) ? STT : VWT;
+    retVal = TAKEN;
     break;
+  }
   case STT:
+  {
     a21264_localPredTable[index] = (outcome == TAKEN) ? WST : WTT;
+    retVal = TAKEN;
     break;
+  }
   case WST:
+  {
     a21264_localPredTable[index] = (outcome == TAKEN) ? WST : STT;
+    retVal = TAKEN;
     break;
+  }
+    
   default:
     printf("Warning: Undefined state of entry in A21264 LHT!\n");
     break;
   }
 
   a21264_localHistory[pc_lower_bits] = ((a21264_localHistory[pc_lower_bits] << 1) | outcome);
+
+  return retVal;
 }
 
 void a21264_train(uint32_t pc, uint8_t outcome)
 {
-  a21264_trainGlobal(outcome);
-  a21264_trainLocal(pc, outcome);
+  uint8_t globTrained = a21264_trainGlobal(outcome);
+  uint8_t localTrained = a21264_trainLocal(pc, outcome);
+
+  uint16_t a21264_ghtEntries  = 1 << a21264_globalHistoryBits;
+  uint16_t index = a21264_globalHistory & (a21264_ghtEntries - 1);
+
+  if(globTrained == localTrained)
+  {
+    // Do nothing
+  }
+  else if(globTrained == outcome)
+  {
+    if(a21264_chooser[index] != 3)
+    {
+      a21264_chooser[index]++;
+    }
+  }
+  else if(localTrained == outcome)
+  {
+    if(a21264_chooser[index] != 0)
+    {
+      a21264_chooser[index]--;
+    }
+  }
+
 }
 
 
@@ -306,6 +389,7 @@ void a21264_free()
   free(a21264_ght);
   free(a21264_localHistory);
   free(a21264_localPredTable);
+  free(a21264_chooser);
 }
 
 void init_predictor()
