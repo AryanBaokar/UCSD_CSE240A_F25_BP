@@ -46,6 +46,7 @@ uint64_t ghistory;
 
 // Alpha 21264 Tournament predictor
 uint16_t a21264_globalHistory;   // Actual history of global
+uint16_t a21264_globalHistoryBeforeTrain;
 uint16_t* a21264_localHistory;   // Actual history of each branch, use pc to index this
 uint8_t* a21264_ght;             // Table containing predictions for global history
 uint8_t* a21264_localPredTable;  // Prediction to be made for each type of local history
@@ -245,6 +246,7 @@ uint8_t a21264_trainGlobal(uint8_t outcome)
   // Training Global Prediction
   uint16_t a21264_ghtEntries  = 1 << a21264_globalHistoryBits;
   uint16_t index = a21264_globalHistory & (a21264_ghtEntries - 1);
+  a21264_globalHistoryBeforeTrain = a21264_globalHistory;
   uint8_t retVal;
 
   // Update state of entry in bht based on outcome
@@ -359,7 +361,7 @@ void a21264_train(uint32_t pc, uint8_t outcome)
   uint8_t localTrained = a21264_trainLocal(pc, outcome);
 
   uint16_t a21264_ghtEntries  = 1 << a21264_globalHistoryBits;
-  uint16_t index = a21264_globalHistory & (a21264_ghtEntries - 1);
+  uint16_t index = a21264_globalHistoryBeforeTrain & (a21264_ghtEntries - 1);
 
   if(globTrained == localTrained)
   {
