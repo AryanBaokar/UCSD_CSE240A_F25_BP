@@ -1,10 +1,6 @@
-Trace        | Predictor    | Result Summary                                              
--------------+--------------+-------------------------------------------------------------
-U1_Blender   | tournament   | Branches:          10000000 Incorrect:           486808 Misprediction Rate:  48.681 
-U1_Blender   | gshare       | Branches:          10000000 Incorrect:           336541 Misprediction Rate:  33.654 
-U2_Leela     | tournament   | Branches:          10000000 Incorrect:          1244671 Misprediction Rate: 124.467 
-U2_Leela     | gshare       | Branches:          10000000 Incorrect:          1017290 Misprediction Rate: 101.729 
-U3_GCC       | tournament   | Branches:          10000000 Incorrect:           611965 Misprediction Rate:  61.196 
-U3_GCC       | gshare       | Branches:          10000000 Incorrect:           196083 Misprediction Rate:  19.608 
-U4_Cam4      | tournament   | Branches:          10000000 Incorrect:            93414 Misprediction Rate:   9.341 
-U4_Cam4      | gshare       | Branches:          10000000 Incorrect:           100300 Misprediction Rate:  10.030 
+Trace        | Tournament   | Gshare       | Custom      
+-------------+--------------+--------------+-------------
+U1_Blender   | 48.188       | 33.654       | 403.730     
+U2_Leela     | 121.932      | 101.729      | 407.605     
+U3_GCC       | 59.607       | 19.608       | 381.964     
+U4_Cam4      | 7.898        | 10.030       | 716.519     

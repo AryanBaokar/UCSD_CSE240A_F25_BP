@@ -302,7 +302,7 @@ uint8_t a21264_trainLocal(uint32_t pc , uint8_t outcome)
   } 
   case SNT:
   {
-    a21264_localPredTable[index] = (outcome == TAKEN) ? VWNT : VSNT;
+    a21264_localPredTable[index] = (outcome == TAKEN) ? WNT : VSNT;
     retVal = NOTTAKEN;
     break;
   }
@@ -320,7 +320,7 @@ uint8_t a21264_trainLocal(uint32_t pc , uint8_t outcome)
   }
   case VWT:
   {
-    a21264_localPredTable[index] = (outcome == TAKEN) ? WTT : WNT;
+    a21264_localPredTable[index] = (outcome == TAKEN) ? WTT : VWNT;
     retVal = TAKEN;
     break;
   }
@@ -379,7 +379,6 @@ void a21264_train(uint32_t pc, uint8_t outcome)
       a21264_chooser[index]--;
     }
   }
-
 }
 
 
